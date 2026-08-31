@@ -50,7 +50,7 @@ body{
     radial-gradient(circle at 15% 0%, rgba(232,163,61,0.06), transparent 40%),
     var(--bg);
   position:relative;
-  padding-bottom:96px;
+  padding-bottom:150px;
 }
 
 /* ---------- Header ---------- */
@@ -217,27 +217,7 @@ body{
 }
 .date-chip[data-active="true"] .date-num{color:var(--amber);}
 
-/* ---------- People stepper ---------- */
-.people-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  background:var(--surface);
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  padding:12px 14px;
-}
-.people-info{
-  font-family:'Barlow Condensed',sans-serif;
-  font-weight:600;
-  font-size:16px;
-}
-.people-cap{
-  font-family:'IBM Plex Mono',monospace;
-  font-size:11px;
-  color:var(--muted);
-  margin-top:2px;
-}
+/* ---------- Steppers (live in the sticky bottom bar) ---------- */
 .stepper{
   display:flex;
   align-items:center;
@@ -736,12 +716,38 @@ body{
   max-width:430px;
   background:var(--surface-raised);
   border-top:1px solid var(--line);
-  padding:12px 16px;
+  padding:10px 16px 12px;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:10px;
+  z-index:20;
+}
+.sb-controls{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+.sb-stepper{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.sb-label{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11px;
+  letter-spacing:0.04em;
+  color:var(--muted);
+  text-transform:uppercase;
+}
+.sb-bottom{
   display:flex;
   align-items:center;
   gap:12px;
-  z-index:20;
 }
+.summary-bar .stepper{gap:9px;}
+.summary-bar .stepper button{width:30px;height:30px;font-size:17px;}
+.summary-bar .stepper-count{font-size:16px;min-width:16px;}
 .summary-info{flex:1;min-width:0;}
 .summary-row{
   font-size:12px;
@@ -992,35 +998,6 @@ body{
       <div class="date-row" id="dateRow"></div>
     </div>
 
-    <div class="section">
-      <div class="section-label">Количество человек</div>
-      <div class="people-row">
-        <div>
-          <div class="people-info">Участники брони</div>
-          <div class="people-cap" id="peopleCap"></div>
-        </div>
-        <div class="stepper">
-          <button id="peopleMinus" type="button">−</button>
-          <span class="stepper-count" id="peopleCount">1</span>
-          <button id="peoplePlus" type="button">+</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-label">Длительность</div>
-      <div class="people-row">
-        <div>
-          <div class="people-info">Сколько времени</div>
-          <div class="people-cap" id="durationCap"></div>
-        </div>
-        <div class="stepper">
-          <button id="durationMinus" type="button">−</button>
-          <span class="stepper-count" id="durationCount">1 ч</span>
-          <button id="durationPlus" type="button">+</button>
-        </div>
-      </div>
-    </div>
 
     <div class="section">
       <div class="section-label">Время брони</div>
@@ -1132,11 +1109,31 @@ body{
   </div>
 
   <div class="summary-bar" id="summaryBar">
-    <div class="summary-info">
-      <div class="summary-row" id="summaryRow">Выберите время</div>
-      <div class="summary-total" id="summaryTotal">—</div>
+    <div class="sb-controls">
+      <div class="sb-stepper">
+        <span class="sb-label">Человек</span>
+        <div class="stepper">
+          <button id="peopleMinus" type="button">−</button>
+          <span class="stepper-count" id="peopleCount">1</span>
+          <button id="peoplePlus" type="button">+</button>
+        </div>
+      </div>
+      <div class="sb-stepper">
+        <span class="sb-label">Часы</span>
+        <div class="stepper">
+          <button id="durationMinus" type="button">−</button>
+          <span class="stepper-count" id="durationCount">1 ч</span>
+          <button id="durationPlus" type="button">+</button>
+        </div>
+      </div>
     </div>
-    <div class="rec-btn" id="recBtn" data-enabled="false"></div>
+    <div class="sb-bottom">
+      <div class="summary-info">
+        <div class="summary-row" id="summaryRow">Выберите время</div>
+        <div class="summary-total" id="summaryTotal">—</div>
+      </div>
+      <div class="rec-btn" id="recBtn" data-enabled="false"></div>
+    </div>
   </div>
 
 </div>
@@ -1362,7 +1359,6 @@ body{
   function renderPeople(){
     const room=currentRoom();
     document.getElementById('peopleCount').textContent=state.people;
-    document.getElementById('peopleCap').textContent=`Максимум участников — ${room.capacity} чел.`;
     document.getElementById('peopleMinus').disabled = state.people<=1;
     document.getElementById('peoplePlus').disabled = state.people>=room.capacity;
   }
@@ -1589,8 +1585,6 @@ body{
     const maxNow=maxDurationForStart();
     if(state.durationHours>maxNow) state.durationHours=maxNow;
     document.getElementById('durationCount').textContent = state.durationHours + ' ч';
-    document.getElementById('durationCap').textContent =
-      `от ${DURATION_MIN_H} до ${maxNow} ч (до следующей брони)`;
     document.getElementById('durationMinus').disabled = state.durationHours<=DURATION_MIN_H;
     document.getElementById('durationPlus').disabled = state.durationHours>=maxNow;
   }
