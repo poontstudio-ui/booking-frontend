@@ -789,11 +789,36 @@ body{
   font-size:20px;
   margin-bottom:4px;
 }
-.panel-sub{
-  font-size:12px;
-  color:var(--muted);
+.panel-summary{
+  background:var(--surface-raised);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px 14px;
   margin-bottom:18px;
 }
+.panel-summary-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:12px;
+  padding:6px 0;
+  font-size:14px;
+}
+.panel-summary-row + .panel-summary-row{border-top:1px solid rgba(255,255,255,0.05);}
+.panel-summary-row .ps-label{color:var(--muted);}
+.panel-summary-row .ps-value{
+  color:var(--text);
+  font-weight:600;
+  font-family:'IBM Plex Mono',monospace;
+  text-align:right;
+}
+.panel-summary-row.panel-summary-total{
+  margin-top:2px;
+  padding-top:9px;
+  border-top:1px solid var(--line);
+  font-size:15px;
+}
+.panel-summary-total .ps-value{color:var(--amber);}
 .field{margin-bottom:14px;}
 .field label{
   display:block;
@@ -1067,7 +1092,12 @@ body{
 <div class="overlay" id="overlay"></div>
 <div class="panel" id="panel">
   <div class="panel-title">Подтверждение брони</div>
-  <div class="panel-sub" id="panelSub"></div>
+  <div class="panel-summary">
+    <div class="panel-summary-row"><span class="ps-label">Дата</span><span class="ps-value" id="psDate"></span></div>
+    <div class="panel-summary-row"><span class="ps-label">Время</span><span class="ps-value" id="psTime"></span></div>
+    <div class="panel-summary-row"><span class="ps-label">Человек</span><span class="ps-value" id="psPeople"></span></div>
+    <div class="panel-summary-row panel-summary-total"><span class="ps-label">Сумма</span><span class="ps-value" id="psPrice"></span></div>
+  </div>
   <div class="field">
     <label for="nameInput">Имя</label>
     <input id="nameInput" type="text" placeholder="Как к вам обращаться">
@@ -1528,8 +1558,13 @@ body{
 
   function openPanel(){
     const endMinutes=state.startMinutes + state.durationHours*60;
-    document.getElementById('panelSub').textContent =
-      `${currentDate().toLocaleDateString('ru-RU',{day:'numeric',month:'short'})} · ${minutesToLabel(state.startMinutes)}–${minutesToLabel(endMinutes)}`;
+    const price=(state.durationHours*state.people*ratePerPerson(state.people)).toFixed(2).replace(/\.00$/,'');
+    document.getElementById('psDate').textContent =
+      currentDate().toLocaleDateString('ru-RU',{weekday:'short', day:'numeric', month:'long'});
+    document.getElementById('psTime').textContent =
+      `${minutesToLabel(state.startMinutes)}–${minutesToLabel(endMinutes)} · ${state.durationHours} ч`;
+    document.getElementById('psPeople').textContent = `${state.people} чел.`;
+    document.getElementById('psPrice').textContent = `${price} BYN`;
     overlay.dataset.open='true';
     panel.dataset.open='true';
   }
