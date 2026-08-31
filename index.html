@@ -1273,15 +1273,24 @@ body{
   }
 
   // Точка в Беларуси, UTC+3 круглый год — «сейчас» считаем от неё, а не от tz устройства.
+  // Сдвинутую дату читаем через getUTC*, тогда её поля = стенные часы Минска.
   function businessNow(){ return new Date(Date.now() + 180*60000); }
+  function businessNowMinutes(){
+    const n = businessNow();
+    return n.getUTCHours()*60 + n.getUTCMinutes();
+  }
+  // Сегодня по времени точки, как локальная полночь: у такой даты getDate/
+  // getDay/toLocaleDateString дают нужный календарный день без ухода в UTC.
+  function businessToday(){
+    const n = businessNow();
+    return new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+  }
 
   // Минута суток, до которой на выбранный день бронировать уже нельзя.
   // Только для сегодняшнего дня (первый чип); дальше — без ограничения.
   function pastCutoff(){
     if(state.dateIndex !== 0) return DAY_START_MIN;
-    const n = businessNow();
-    const nowMin = n.getUTCHours()*60 + n.getUTCMinutes();
-    return Math.min(DAY_END_MIN, Math.max(DAY_START_MIN, Math.ceil(nowMin/15)*15));
+    return Math.min(DAY_END_MIN, Math.max(DAY_START_MIN, Math.ceil(businessNowMinutes()/15)*15));
   }
 
   function ratePerPerson(people){
@@ -1301,9 +1310,11 @@ body{
   const DURATION_MIN_H = 1;
   const DURATION_MAX_H = 8;
 
+  // Дни отсчитываем от «сегодня в Минске», а не от даты устройства: иначе
+  // ночью (00:00–03:00) первый чип — уже вчерашний день.
   function buildDates(n){
     const out=[];
-    const today=new Date();
+    const today=businessToday();
     for(let i=0;i<n;i++){
       const d=new Date(today);
       d.setDate(today.getDate()+i);
@@ -1323,10 +1334,25 @@ body{
 
   function currentRoom(){ return ROOM; }
   function currentDate(){ return state.dates[state.dateIndex]; }
-  function dateKey(d){ return d.toISOString().slice(0,10); }
+  // Читаем локальные поля, а не toISOString(): последний переводит в UTC, и у
+  // пользователя восточнее Гринвича ночью на бэкенд уходил предыдущий день —
+  // чип показывал «1 сент.», а бронь создавалась на 31 августа.
+  function dateKey(d){
+    return d.getFullYear() + '-' +
+      String(d.getMonth()+1).padStart(2,'0') + '-' +
+      String(d.getDate()).padStart(2,'0');
+  }
   function dateLabelFromISO(iso){
     return new Date(iso+'T00:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long'});
   }
+  // Имя клиента приходит из чужого ввода и попадает в кабинет владельца —
+  // без экранирования это хранимый XSS против владельца.
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, (c)=>(
+      {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+    ));
+  }
+
   function minutesToLabel(mins){
     mins = ((mins % 1440) + 1440) % 1440;
     const h = Math.floor(mins/60), m = mins%60;
@@ -1660,10 +1686,12 @@ body{
   overlay.addEventListener('click', closePanel);
   document.getElementById('cancelBtn').addEventListener('click', closePanel);
 
+  // b.end — минуты от полуночи, не часы. Здесь раньше стояло setHours(b.end),
+  // то есть 18:00 превращалось в «через 45 дней», и прошедших броней для
+  // интерфейса не существовало вовсе. Сравниваем по времени точки, как сервер.
   function isPastBooking(b){
-    const end=new Date(b.date+'T00:00:00');
-    end.setHours(b.end,0,0,0);
-    return end.getTime() < Date.now();
+    const today = dateKey(businessToday());
+    return b.date < today || (b.date === today && b.end <= businessNowMinutes());
   }
 
   function digitsAfterPrefix(raw){
@@ -1768,10 +1796,10 @@ body{
       });
 
       document.getElementById('successDetail').innerHTML =
-        `<b>${ROOM.name}</b><br>`+
-        `${currentDate().toLocaleDateString('ru-RU',{day:'numeric',month:'long'})}, ${minutesToLabel(start)}–${minutesToLabel(end)} · ${state.people} чел.<br>`+
-        `${nameInput.value.trim()} · ${phoneInput.value.trim()}<br>`+
-        `Итого: ${booking.price} BYN`;
+        `<b>${esc(ROOM.name)}</b><br>`+
+        `${esc(currentDate().toLocaleDateString('ru-RU',{day:'numeric',month:'long'}))}, ${minutesToLabel(start)}–${minutesToLabel(end)} · ${state.people} чел.<br>`+
+        `${esc(nameInput.value.trim())} · ${esc(phoneInput.value.trim())}<br>`+
+        `Итого: ${esc(booking.price)} BYN`;
 
       closePanel();
       document.getElementById('mainView').dataset.hidden='true';
@@ -1812,11 +1840,11 @@ body{
     card.dataset.status=b.status;
     card.innerHTML=`
       <div class="booking-card-top">
-        <div class="booking-date">${dateLabelFromISO(b.date)}</div>
-        <div class="booking-status" data-status="${b.status}">${b.status==='active' ? 'Активна' : 'Отменена'}</div>
+        <div class="booking-date">${esc(dateLabelFromISO(b.date))}</div>
+        <div class="booking-status" data-status="${esc(b.status)}">${b.status==='active' ? 'Активна' : 'Отменена'}</div>
       </div>
-      ${showOwnerName ? '<div class="admin-booking-owner">'+(b.name || 'Без имени')+'</div>' : ''}
-      <div class="booking-meta">${minutesToLabel(b.start)}–${minutesToLabel(b.end)} · ${b.people} чел. · ${b.price} BYN</div>
+      ${showOwnerName ? '<div class="admin-booking-owner">'+esc(b.name || 'Без имени')+'</div>' : ''}
+      <div class="booking-meta">${minutesToLabel(b.start)}–${minutesToLabel(b.end)} · ${esc(b.people)} чел. · ${esc(b.price)} BYN</div>
     `;
     if(b.status==='active'){
       const btn=document.createElement('button');
@@ -1834,7 +1862,7 @@ body{
     try{
       list = await api('GET', '/bookings/mine');
     } catch(e){
-      bookingsList.innerHTML='<div class="bookings-empty">'+e.message+'</div>';
+      bookingsList.innerHTML='<div class="bookings-empty">'+esc(e.message)+'</div>';
       return;
     }
     bookingsList.innerHTML='';
@@ -1863,7 +1891,7 @@ body{
   function openCancelConfirm(booking){
     pendingCancelId=booking.id;
     document.getElementById('cancelPanelText').innerHTML =
-      `<b>${dateLabelFromISO(booking.date)}, ${minutesToLabel(booking.start)}–${minutesToLabel(booking.end)}</b><br>`+
+      `<b>${esc(dateLabelFromISO(booking.date))}, ${minutesToLabel(booking.start)}–${minutesToLabel(booking.end)}</b><br>`+
       `Место освободится, и участники чата студии получат сообщение об отмене.`;
     overlay.dataset.open='true';
     cancelPanel.dataset.open='true';
@@ -1906,7 +1934,7 @@ body{
     try{
       overview = await api('GET', '/admin/overview');
     } catch(e){
-      list.innerHTML='<div class="bookings-empty">'+e.message+'</div>';
+      list.innerHTML='<div class="bookings-empty">'+esc(e.message)+'</div>';
       document.getElementById('statCount').textContent='—';
       document.getElementById('statRevenue').textContent='—';
       document.getElementById('statAvg').textContent='—';
@@ -2157,7 +2185,7 @@ body{
       row.className='owner-row';
       const isMe = id===ownerMe;
       row.innerHTML =
-        `<span>${id}${isMe ? '<span class="owner-you">вы</span>' : ''}</span>` +
+        `<span>${esc(id)}${isMe ? '<span class="owner-you">вы</span>' : ''}</span>` +
         (isMe ? '' : `<button class="tier-delete-btn" type="button" data-idx="${i}" aria-label="Убрать владельца">✕</button>`);
       container.appendChild(row);
     });
