@@ -1388,6 +1388,9 @@ body{
       }
       if(candidate!==state.startMinutes){
         state.startMinutes=candidate;
+        // Максимум длительности зависит от позиции старта — пересчитываем, иначе
+        // кнопки +/- остаются в состоянии, посчитанном для прежнего места.
+        renderDuration();
         renderTimelineSelection();
         renderSummary();
       }
