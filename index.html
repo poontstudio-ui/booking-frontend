@@ -1270,6 +1270,8 @@ body{
     for(let h=w.start; h<w.end; h++) HOURS.push(h);
     DAY_START_MIN = w.start*60;
     DAY_END_MIN = w.end*60;
+    const hours = Math.max(1, (DAY_END_MIN - DAY_START_MIN)/60);
+    TIMELINE_PPH = Math.round(Math.min(TIMELINE_PPH_BASE, TIMELINE_MAX_TRACK / hours));
     const maxStart = DAY_END_MIN - state.durationHours*60;
     state.startMinutes = Math.max(DAY_START_MIN, Math.min(maxStart, state.startMinutes));
   }
@@ -1295,7 +1297,11 @@ body{
     return best.rate;
   }
   const DAY_NAMES = ['ВС','ПН','ВТ','СР','ЧТ','ПТ','СБ'];
-  const TIMELINE_PPH = 30; // пикселей на час на шкале
+  // Высота шкале задаётся в пикселях на час и зависит от длины рабочего дня:
+  // короткий день — крупнее (растянут), длинный — сжимается, но не длиннее MAX.
+  const TIMELINE_PPH_BASE = 44;      // базовый масштаб для дня средней длины
+  const TIMELINE_MAX_TRACK = 720;    // предел общей высоты шкалы, px
+  let TIMELINE_PPH = TIMELINE_PPH_BASE;   // пересчитывается в applyDayWindow()
   const DURATION_MIN_H = 1;
   const DURATION_MAX_H = 8;
 
