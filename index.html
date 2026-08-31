@@ -678,6 +678,11 @@ body{
   border-radius:4px;
   z-index:1;
 }
+.timeline-past{
+  background:repeating-linear-gradient(-45deg,
+    rgba(255,255,255,0.055), rgba(255,255,255,0.055) 6px,
+    rgba(255,255,255,0.02) 6px, rgba(255,255,255,0.02) 12px);
+}
 .timeline-selection{
   position:absolute;
   left:2px;
@@ -1269,6 +1274,18 @@ body{
     state.startMinutes = Math.max(DAY_START_MIN, Math.min(maxStart, state.startMinutes));
   }
 
+  // Точка в Беларуси, UTC+3 круглый год — «сейчас» считаем от неё, а не от tz устройства.
+  function businessNow(){ return new Date(Date.now() + 180*60000); }
+
+  // Минута суток, до которой на выбранный день бронировать уже нельзя.
+  // Только для сегодняшнего дня (первый чип); дальше — без ограничения.
+  function pastCutoff(){
+    if(state.dateIndex !== 0) return DAY_START_MIN;
+    const n = businessNow();
+    const nowMin = n.getUTCHours()*60 + n.getUTCMinutes();
+    return Math.min(DAY_END_MIN, Math.max(DAY_START_MIN, Math.ceil(nowMin/15)*15));
+  }
+
   function ratePerPerson(people){
     const sorted=[...RATES].sort((a,b)=>a.minPeople-b.minPeople);
     let best=sorted[0];
@@ -1479,7 +1496,7 @@ body{
     track.querySelectorAll('.timeline-busy').forEach(el=>el.remove());
     state.busyIntervals.forEach(b=>{
       const el=document.createElement('div');
-      el.className='timeline-busy';
+      el.className = b.past ? 'timeline-busy timeline-past' : 'timeline-busy';
       el.style.top=((b.start-DAY_START_MIN)/60*TIMELINE_PPH)+'px';
       el.style.height=((b.end-b.start)/60*TIMELINE_PPH)+'px';
       track.appendChild(el);
@@ -1510,6 +1527,11 @@ body{
     applyDayWindow();
     layoutTimeline();
     await fetchBusyIntervals();
+    // Прошедшее время сегодня — такой же недоступный интервал, как чужая бронь.
+    const cutoff = pastCutoff();
+    if(cutoff > DAY_START_MIN){
+      state.busyIntervals = [{start:DAY_START_MIN, end:cutoff, past:true}, ...state.busyIntervals];
+    }
     if(state.busyIntervals.some(b=>state.startMinutes<b.end && state.startMinutes+DURATION_MIN_H*60>b.start)){
       const firstFree=findFirstFreeStart();
       if(firstFree!==null) state.startMinutes=firstFree;
@@ -1580,6 +1602,16 @@ body{
     const rec=document.getElementById('recBtn');
 
     const endMinutes=state.startMinutes + state.durationHours*60;
+    // Текущий выбор упирается в чужую бронь / прошедшее время / конец дня — бронировать нельзя.
+    const blocked = endMinutes>DAY_END_MIN ||
+      state.busyIntervals.some(b=>state.startMinutes<b.end && endMinutes>b.start);
+    if(blocked){
+      bar.textContent = 'На этот день свободного времени нет';
+      total.textContent = '—';
+      rec.dataset.enabled='false';
+      return;
+    }
+
     const price=(state.durationHours*state.people*ratePerPerson(state.people)).toFixed(2).replace(/\.00$/,'');
     bar.textContent = `${currentDate().toLocaleDateString('ru-RU',{day:'numeric',month:'short'})} · ${minutesToLabel(state.startMinutes)}–${minutesToLabel(endMinutes)} · ${state.people} чел.`;
     total.textContent = `${price} BYN · ${state.durationHours} ч`;
