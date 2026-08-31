@@ -26,7 +26,7 @@
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{margin:0;padding:0;}
+html,body{margin:0;padding:0;overscroll-behavior:none;}
 body{
   background:var(--bg);
   color:var(--text);
@@ -1114,6 +1114,9 @@ body{
   if(tg){
     tg.ready();
     tg.expand();
+    // Иначе вертикальный свайп по шкале времени Telegram перехватывает как жест
+    // сворачивания мини-аппа — «тянется всё окно». Есть с Bot API 7.7.
+    try{ tg.disableVerticalSwipes(); }catch(e){}
     try{ tg.setBackgroundColor('#14110F'); }catch(e){}
     try{ tg.setHeaderColor('#14110F'); }catch(e){}
   }
@@ -1341,6 +1344,7 @@ body{
     sel.addEventListener('click', (e)=>{ e.stopPropagation(); suppressClick=false; });
     sel.addEventListener('pointerdown', (e)=>{
       e.stopPropagation();
+      e.preventDefault();
       sel.setPointerCapture(e.pointerId);
       dragStartY=e.clientY;
       dragStartMinutes=state.startMinutes;
@@ -1354,14 +1358,21 @@ body{
       // по кадрам. Длительность при перетаскивании не меняется.
       const deltaMin=Math.round(deltaY/TIMELINE_PPH*60/15)*15;
       const durMin=state.durationHours*60;
+      const overlaps=(m)=>state.busyIntervals.filter(b=>m<b.end && m+durMin>b.start);
       let candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, dragStartMinutes+deltaMin));
-      // Наезд на чужую бронь: блок выталкивается за неё по направлению движения
-      // (сквозь бронь протащить можно), у границ суток просто останавливается.
+      // Наезд на чужие брони: блок выталкивается за крайнюю из них по направлению
+      // движения (сквозь бронь протащить можно — если по ту сторону есть место),
+      // у границ суток просто останавливается.
       const direction = deltaMin>0 ? 1 : (deltaMin<0 ? -1 : 0);
-      const overlap=state.busyIntervals.find(b=>candidate<b.end && candidate+durMin>b.start);
-      if(overlap){
-        candidate = direction>=0 ? overlap.start-durMin : overlap.end;
+      const hits=overlaps(candidate);
+      if(hits.length){
+        candidate = direction>=0
+          ? Math.min(...hits.map(b=>b.start))-durMin
+          : Math.max(...hits.map(b=>b.end));
         candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, candidate));
+        // После выталкивания всё ещё пересекается — значит щель между бронями
+        // короче выбранной длительности. Блок туда не влезает: не двигаем.
+        if(overlaps(candidate).length) return;
       }
       if(candidate!==state.startMinutes){
         state.startMinutes=candidate;
@@ -1738,6 +1749,9 @@ body{
     }
     if(bookingsView.dataset.visible==='true') renderBookings();
     if(adminView.dataset.visible==='true') renderAdmin();
+    // Освободившийся слот должен пропасть с основной шкалы сразу, а не после
+    // переключения дня туда-обратно.
+    refreshTimeline();
   });
 
   // ---- Кабинет владельца ----
