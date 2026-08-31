@@ -1358,21 +1358,29 @@ body{
       // по кадрам. Длительность при перетаскивании не меняется.
       const deltaMin=Math.round(deltaY/TIMELINE_PPH*60/15)*15;
       const durMin=state.durationHours*60;
-      const overlaps=(m)=>state.busyIntervals.filter(b=>m<b.end && m+durMin>b.start);
+      const overlaps=(m)=>state.busyIntervals.some(b=>m<b.end && m+durMin>b.start);
       let candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, dragStartMinutes+deltaMin));
-      // Наезд на чужие брони: блок выталкивается за крайнюю из них по направлению
-      // движения (сквозь бронь протащить можно — если по ту сторону есть место),
-      // у границ суток просто останавливается.
-      const direction = deltaMin>0 ? 1 : (deltaMin<0 ? -1 : 0);
-      const hits=overlaps(candidate);
-      if(hits.length){
-        candidate = direction>=0
-          ? Math.min(...hits.map(b=>b.start))-durMin
-          : Math.max(...hits.map(b=>b.end));
-        candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, candidate));
-        // После выталкивания всё ещё пересекается — значит щель между бронями
-        // короче выбранной длительности. Блок туда не влезает: не двигаем.
-        if(overlaps(candidate).length) return;
+      // Как только блок наезжает на занятое время, он сразу перескакивает в
+      // ближайший по направлению движения свободный промежуток, куда влезает
+      // целиком по своей длительности. Если такого нет — остаётся на месте.
+      if(overlaps(candidate)){
+        const down=deltaMin>=0;
+        const gaps=freeGaps();
+        let target=null;
+        if(down){
+          for(const g of gaps){
+            const p=Math.max(candidate, g.start);
+            if(p<=g.end-durMin){ target=p; break; }
+          }
+        } else {
+          for(let i=gaps.length-1;i>=0;i--){
+            const g=gaps[i];
+            const p=Math.min(candidate, g.end-durMin);
+            if(p>=g.start){ target=p; break; }
+          }
+        }
+        if(target===null) return;
+        candidate=target;
       }
       if(candidate!==state.startMinutes){
         state.startMinutes=candidate;
@@ -1447,6 +1455,29 @@ body{
       if(!busy) return m;
     }
     return null;
+  }
+
+  // Свободные промежутки дня в минутах: [{start,end}, …], слева направо,
+  // с объединением пересекающихся/дублирующихся броней.
+  function freeGaps(){
+    const busy=state.busyIntervals
+      .map(b=>({start:Math.max(b.start,DAY_START_MIN), end:Math.min(b.end,DAY_END_MIN)}))
+      .filter(b=>b.end>b.start)
+      .sort((a,b)=>a.start-b.start);
+    const merged=[];
+    for(const b of busy){
+      const last=merged[merged.length-1];
+      if(last && b.start<=last.end) last.end=Math.max(last.end,b.end);
+      else merged.push({...b});
+    }
+    const gaps=[];
+    let cur=DAY_START_MIN;
+    for(const b of merged){
+      if(b.start>cur) gaps.push({start:cur, end:b.start});
+      cur=Math.max(cur,b.end);
+    }
+    if(cur<DAY_END_MIN) gaps.push({start:cur, end:DAY_END_MIN});
+    return gaps;
   }
 
   function maxDurationForStart(){
