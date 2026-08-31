@@ -609,12 +609,6 @@ body{
 }
 .cancel-panel-text b{color:var(--text);font-weight:500;}
 
-/* ---------- Waveform divider ---------- */
-.wave-divider{
-  padding:16px 20px 4px;
-  opacity:0.5;
-}
-
 /* ---------- Vertical day timeline ---------- */
 .timeline-wrap{
   display:flex;
@@ -948,25 +942,6 @@ body{
       </div>
     </div>
 
-    <div class="wave-divider">
-      <svg width="100%" height="18" viewBox="0 0 390 18" preserveAspectRatio="none">
-        <polyline points="0,9 20,3 40,15 60,5 80,12 100,2 120,16 140,7 160,11 180,4 200,14 220,6 240,10 260,3 280,15 300,8 320,12 340,5 360,13 390,9"
-          fill="none" stroke="#E8A33D" stroke-width="1.2" opacity="0.6"/>
-      </svg>
-    </div>
-
-    <div class="section">
-      <div class="section-label">Время брони</div>
-      <div class="timeline-wrap">
-        <div class="timeline-labels" id="timelineLabels"></div>
-        <div class="timeline-track" id="timelineTrack"></div>
-      </div>
-      <div class="timeline-legend">
-        <span><span class="timeline-legend-dot" style="background:var(--red-dim)"></span>занято</span>
-        <span><span class="timeline-legend-dot" style="background:var(--amber-dim)"></span>ваш выбор</span>
-      </div>
-    </div>
-
     <div class="section">
       <div class="section-label">Длительность</div>
       <div class="people-row">
@@ -979,6 +954,18 @@ body{
           <span class="stepper-count" id="durationCount">1 ч</span>
           <button id="durationPlus" type="button">+</button>
         </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Время брони</div>
+      <div class="timeline-wrap">
+        <div class="timeline-labels" id="timelineLabels"></div>
+        <div class="timeline-track" id="timelineTrack"></div>
+      </div>
+      <div class="timeline-legend">
+        <span><span class="timeline-legend-dot" style="background:var(--red-dim)"></span>занято</span>
+        <span><span class="timeline-legend-dot" style="background:var(--amber-dim)"></span>ваш выбор</span>
       </div>
     </div>
   </div>
