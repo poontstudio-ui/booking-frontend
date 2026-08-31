@@ -1213,11 +1213,17 @@ body{
       labels.appendChild(lbl);
     }
 
+    // Гасит «фантомный» click, который браузер шлёт по треку сразу после
+    // перетаскивания блока: к концу drag палец почти всегда уходит с блока на
+    // голый трек, и без этого блок прыгал бы к позиции пальца (обычно вниз).
+    let suppressClick=false, dragMoved=false;
+
     track.addEventListener('click', (e)=>{
+      if(suppressClick){ suppressClick=false; return; }
       const rect=track.getBoundingClientRect();
       const y=e.clientY-rect.top;
       let m=DAY_START_MIN + Math.round(y/TIMELINE_PPH*60/15)*15;
-      m=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-DURATION_MIN_H*60, m));
+      m=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-state.durationHours*60, m));
       let inBusy=state.busyIntervals.find(b=>m>=b.start && m<b.end);
       while(inBusy){
         m=inBusy.end;
@@ -1237,40 +1243,33 @@ body{
     track.appendChild(sel);
 
     let dragStartY=null, dragStartMinutes=null;
-    sel.addEventListener('click', (e)=>{ e.stopPropagation(); });
+    sel.addEventListener('click', (e)=>{ e.stopPropagation(); suppressClick=false; });
     sel.addEventListener('pointerdown', (e)=>{
       e.stopPropagation();
       sel.setPointerCapture(e.pointerId);
       dragStartY=e.clientY;
       dragStartMinutes=state.startMinutes;
+      dragMoved=false;
     });
     sel.addEventListener('pointermove', (e)=>{
       if(dragStartY===null) return;
       const deltaY=e.clientY-dragStartY;
+      if(Math.abs(deltaY)>2) dragMoved=true;
+      // Позиция считается от точки, с которой начали тянуть, а не накапливается
+      // по кадрам. Длительность при перетаскивании не меняется.
       const deltaMin=Math.round(deltaY/TIMELINE_PPH*60/15)*15;
       const durMin=state.durationHours*60;
-      // Позиция отсчитывается от точки, с которой начали тянуть (dragStartMinutes —
-      // заведомо свободный слот), а не накапливается по кадрам — иначе дрожание.
-      let target=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, dragStartMinutes+deltaMin));
-      // Длительность при перетаскивании не меняется. Если между стартовой
-      // позицией и целью есть чужая бронь, блок останавливается вплотную к
-      // ближайшей из них и дальше не идёт — не перепрыгивает и не сжимается.
-      if(target>dragStartMinutes){
-        for(const b of state.busyIntervals){
-          if(dragStartMinutes+durMin<=b.start && target+durMin>b.start){
-            target=Math.min(target, b.start-durMin);
-          }
-        }
-      } else if(target<dragStartMinutes){
-        for(const b of state.busyIntervals){
-          if(dragStartMinutes>=b.end && target<b.end){
-            target=Math.max(target, b.end);
-          }
-        }
+      let candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, dragStartMinutes+deltaMin));
+      // Наезд на чужую бронь: блок выталкивается за неё по направлению движения
+      // (сквозь бронь протащить можно), у границ суток просто останавливается.
+      const direction = deltaMin>0 ? 1 : (deltaMin<0 ? -1 : 0);
+      const overlap=state.busyIntervals.find(b=>candidate<b.end && candidate+durMin>b.start);
+      if(overlap){
+        candidate = direction>=0 ? overlap.start-durMin : overlap.end;
+        candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, candidate));
       }
-      target=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, target));
-      if(target!==state.startMinutes){
-        state.startMinutes=target;
+      if(candidate!==state.startMinutes){
+        state.startMinutes=candidate;
         renderTimelineSelection();
         renderSummary();
       }
@@ -1278,6 +1277,12 @@ body{
     function endDrag(e){
       if(dragStartY===null) return;
       dragStartY=null;
+      if(dragMoved){
+        // фантомный click по треку придёт следующим тиком — гасим именно его;
+        // setTimeout — страховка, если release произошёл вне трека и click не придёт
+        suppressClick=true;
+        setTimeout(()=>{ suppressClick=false; }, 250);
+      }
       haptic('light');
     }
     sel.addEventListener('pointerup', endDrag);
