@@ -433,6 +433,39 @@ body{
   margin-top:2px;
 }
 
+.hours-week-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+  font-size:12px;
+  color:var(--muted);
+}
+.hours-week-row input{
+  width:46px;
+  background:var(--bg);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:6px 4px;
+  color:var(--text);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:13px;
+  text-align:center;
+}
+.hours-apply-all{
+  padding:6px 10px;
+  border-radius:8px;
+  border:1px dashed var(--line);
+  background:transparent;
+  color:var(--amber);
+  font-family:'Work Sans',sans-serif;
+  font-size:12px;
+  cursor:pointer;
+}
+#hoursEditor .price-row-label{width:32px;flex:0 0 auto;}
+#hoursEditor .price-input-wrap input{width:52px;}
+
 .admin-booking-owner{
   font-family:'Work Sans',sans-serif;
   font-size:12px;
@@ -989,6 +1022,20 @@ body{
     </div>
 
     <div class="section">
+      <div class="section-label">Часы работы</div>
+      <div class="hours-week-row">
+        <span>Вся неделя</span>
+        <input type="number" min="0" max="24" step="1" id="weekAllStart" aria-label="Открытие для всей недели">
+        <span>–</span>
+        <input type="number" min="0" max="24" step="1" id="weekAllEnd" aria-label="Закрытие для всей недели">
+        <button class="hours-apply-all" id="applyWeekAllBtn" type="button">Применить ко всем</button>
+      </div>
+      <div class="price-editor" id="hoursEditor"></div>
+      <button class="btn-primary" id="saveHoursBtn" style="margin-top:12px">Сохранить часы</button>
+      <div class="save-note" id="hoursSaveNote"></div>
+    </div>
+
+    <div class="section">
       <div class="section-label">Все брони</div>
       <div class="bookings-list" id="adminBookingsList"></div>
     </div>
@@ -1099,19 +1146,40 @@ body{
     });
   }
 
-  let ROOM, RATES, HOURS;
+  let ROOM, RATES, HOURS, WEEK_HOURS;
   let DAY_START_MIN, DAY_END_MIN;
 
   function applyTenantConfig(cfg){
     ROOM = {name: cfg.resourceName, capacity: cfg.capacity};
     RATES = cfg.rates;
-    HOURS = [];
-    for(let h=cfg.hoursStart; h<cfg.hoursEnd; h++) HOURS.push(h);
-    DAY_START_MIN = cfg.hoursStart*60;
-    DAY_END_MIN = cfg.hoursEnd*60;
+    WEEK_HOURS = normalizeWeekHours(cfg);
+    applyDayWindow();
     document.title = cfg.name + ' — Бронирование';
     document.querySelector('.brand-name').textContent = cfg.name;
     document.querySelector('.brand-sub').textContent = cfg.subtitle;
+  }
+
+  // Часы работы по дням недели: массив из 7 {start,end} (целые часы),
+  // индекс = Date.getDay() (0 = Вс). Старый конфиг без cfg.hours — одна пара на все дни.
+  function normalizeWeekHours(cfg){
+    const h = cfg.hours;
+    if(Array.isArray(h) && h.length===7 && h.every(d=>d && Number.isInteger(d.start) && Number.isInteger(d.end))){
+      return h.map(d=>({start:d.start, end:d.end}));
+    }
+    return Array.from({length:7}, ()=>({start:cfg.hoursStart, end:cfg.hoursEnd}));
+  }
+
+  function dayWindow(date){ return WEEK_HOURS[date.getDay()]; }
+
+  // Пересчитывает окно шкалы под выбранный день и втягивает текущий выбор внутрь него.
+  function applyDayWindow(){
+    const w = dayWindow(currentDate());
+    HOURS = [];
+    for(let h=w.start; h<w.end; h++) HOURS.push(h);
+    DAY_START_MIN = w.start*60;
+    DAY_END_MIN = w.end*60;
+    const maxStart = DAY_END_MIN - state.durationHours*60;
+    state.startMinutes = Math.max(DAY_START_MIN, Math.min(maxStart, state.startMinutes));
   }
 
   function ratePerPerson(people){
@@ -1198,7 +1266,9 @@ body{
   });
 
   // ---- Вертикальная шкала дня ----
-  function buildTimeline(){
+  // Высота трека и часовые метки зависят от окна выбранного дня — перестраиваются
+  // при каждой смене даты (см. refreshTimeline). Слушатели и блок выбора — нет.
+  function layoutTimeline(){
     const track=document.getElementById('timelineTrack');
     const labels=document.getElementById('timelineLabels');
     const totalH=(DAY_END_MIN-DAY_START_MIN)/60*TIMELINE_PPH;
@@ -1212,6 +1282,11 @@ body{
       lbl.style.top=((m-DAY_START_MIN)/60*TIMELINE_PPH-6)+'px';
       labels.appendChild(lbl);
     }
+  }
+
+  function buildTimeline(){
+    const track=document.getElementById('timelineTrack');
+    layoutTimeline();
 
     // Гасит «фантомный» click, который браузер шлёт по треку сразу после
     // перетаскивания блока: к концу drag палец почти всегда уходит с блока на
@@ -1318,6 +1393,10 @@ body{
   }
 
   async function refreshTimeline(){
+    // Единая точка, через которую проходит любая смена даты / сброс выбора —
+    // здесь окно шкалы подгоняется под часы работы выбранного дня.
+    applyDayWindow();
+    layoutTimeline();
     await fetchBusyIntervals();
     if(state.busyIntervals.some(b=>state.startMinutes<b.end && state.startMinutes+DURATION_MIN_H*60>b.start)){
       const firstFree=findFirstFreeStart();
@@ -1373,6 +1452,8 @@ body{
   }
 
   function renderAll(){
+    applyDayWindow();
+    layoutTimeline();
     renderDates();
     renderPeople();
     renderDuration();
@@ -1699,6 +1780,11 @@ body{
     ratesDraft = RATES.map(t=>({minPeople:t.minPeople, rate:t.rate}));
     renderRatesEditor();
 
+    hoursDraft = WEEK_HOURS.map(d=>({start:d.start, end:d.end}));
+    document.getElementById('weekAllStart').value = hoursDraft[1].start;
+    document.getElementById('weekAllEnd').value = hoursDraft[1].end;
+    renderHoursEditor();
+
     list.innerHTML='';
     if(all.length===0){
       list.innerHTML='<div class="bookings-empty">История броней пуста.</div>';
@@ -1797,6 +1883,81 @@ body{
       note.style.color='var(--amber)';
       note.textContent='Тарифы обновлены';
       renderSummary();
+    } catch(e){
+      note.style.color='var(--red)';
+      note.textContent=e.message;
+    }
+    setTimeout(()=>{ note.textContent=''; }, 2500);
+  });
+
+  // ---- Часы работы по дням недели ----
+  // hoursDraft — 7 x {start,end}, индекс = Date.getDay() (0 = Вс). В редакторе
+  // выводим с понедельника.
+  const WEEKDAY_ORDER = [1,2,3,4,5,6,0];
+  const WEEKDAY_LABELS = {0:'Вс',1:'Пн',2:'Вт',3:'Ср',4:'Чт',5:'Пт',6:'Сб'};
+  let hoursDraft = [];
+
+  function renderHoursEditor(){
+    const container=document.getElementById('hoursEditor');
+    container.innerHTML='';
+    WEEKDAY_ORDER.forEach(dow=>{
+      const d=hoursDraft[dow];
+      const row=document.createElement('div');
+      row.className='price-row';
+      row.innerHTML=`
+        <div class="price-row-label">${WEEKDAY_LABELS[dow]}</div>
+        <div class="price-input-wrap">
+          <input type="number" min="0" max="24" step="1" value="${d.start}" data-dow="${dow}" data-field="start">
+          <span class="price-unit">–</span>
+          <input type="number" min="0" max="24" step="1" value="${d.end}" data-dow="${dow}" data-field="end">
+          <span class="price-unit">ч</span>
+        </div>
+      `;
+      container.appendChild(row);
+    });
+    container.querySelectorAll('input[data-field]').forEach(inp=>{
+      inp.addEventListener('input', ()=>{
+        hoursDraft[Number(inp.dataset.dow)][inp.dataset.field] = parseInt(inp.value,10);
+      });
+    });
+  }
+
+  document.getElementById('applyWeekAllBtn').addEventListener('click', ()=>{
+    const s=parseInt(document.getElementById('weekAllStart').value,10);
+    const e=parseInt(document.getElementById('weekAllEnd').value,10);
+    if(!Number.isInteger(s) || !Number.isInteger(e)) return;
+    for(let i=0;i<7;i++) hoursDraft[i]={start:s, end:e};
+    renderHoursEditor();
+    haptic('light');
+  });
+
+  function validateHoursDraft(){
+    if(!Array.isArray(hoursDraft) || hoursDraft.length!==7) return 'Часы заданы не для всех дней';
+    for(const d of hoursDraft){
+      if(!Number.isInteger(d.start) || !Number.isInteger(d.end)) return 'Часы должны быть целыми числами';
+      if(d.start<0 || d.end>24 || d.start>=d.end) return 'Открытие должно быть раньше закрытия, в пределах 0–24';
+    }
+    return null;
+  }
+
+  document.getElementById('saveHoursBtn').addEventListener('click', async ()=>{
+    const note=document.getElementById('hoursSaveNote');
+    const err=validateHoursDraft();
+    if(err){ note.style.color='var(--red)'; note.textContent=err; return; }
+    try{
+      const updated = await api('PUT', '/admin/hours', hoursDraft);
+      WEEK_HOURS = updated.map(d=>({start:d.start, end:d.end}));
+      hoursDraft = WEEK_HOURS.map(d=>({start:d.start, end:d.end}));
+      renderHoursEditor();
+      applyDayWindow();
+      layoutTimeline();
+      renderTimelineBusy();
+      renderDuration();
+      renderTimelineSelection();
+      renderSummary();
+      haptic('medium');
+      note.style.color='var(--amber)';
+      note.textContent='Часы работы обновлены';
     } catch(e){
       note.style.color='var(--red)';
       note.textContent=e.message;
