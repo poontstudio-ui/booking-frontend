@@ -657,11 +657,10 @@ body{
   z-index:2;
 }
 .timeline-selection:active{cursor:grabbing;}
-.timeline-drag-time{
+.timeline-sel-time{
   position:absolute;
   top:-1px;
   left:-1px;
-  display:none;
   padding:2px 6px;
   background:var(--amber);
   color:#1a1208;
@@ -674,7 +673,6 @@ body{
   white-space:nowrap;
   z-index:3;
 }
-.timeline-selection.dragging .timeline-drag-time{ display:block; }
 .timeline-legend{
   display:flex;
   gap:16px;
@@ -1333,10 +1331,10 @@ body{
     // а не пересоздаётся при каждом рендере.
     const sel=document.createElement('div');
     sel.className='timeline-selection';
-    // Метка времени старта — видна только пока тянут блок.
-    const dragTime=document.createElement('div');
-    dragTime.className='timeline-drag-time';
-    sel.appendChild(dragTime);
+    // Метка времени старта брони — на верхней грани блока, показывается всегда.
+    const selTime=document.createElement('div');
+    selTime.className='timeline-sel-time';
+    sel.appendChild(selTime);
     track.appendChild(sel);
 
     let dragStartY=null, dragStartMinutes=null;
@@ -1347,8 +1345,6 @@ body{
       dragStartY=e.clientY;
       dragStartMinutes=state.startMinutes;
       dragMoved=false;
-      dragTime.textContent=minutesToLabel(state.startMinutes);
-      sel.classList.add('dragging');
     });
     sel.addEventListener('pointermove', (e)=>{
       if(dragStartY===null) return;
@@ -1369,7 +1365,6 @@ body{
       }
       if(candidate!==state.startMinutes){
         state.startMinutes=candidate;
-        dragTime.textContent=minutesToLabel(candidate);
         renderTimelineSelection();
         renderSummary();
       }
@@ -1377,7 +1372,6 @@ body{
     function endDrag(e){
       if(dragStartY===null) return;
       dragStartY=null;
-      sel.classList.remove('dragging');
       if(dragMoved){
         // фантомный click по треку придёт следующим тиком — гасим именно его;
         // setTimeout — страховка, если release произошёл вне трека и click не придёт
@@ -1407,6 +1401,8 @@ body{
     if(!sel) return;
     sel.style.top=((state.startMinutes-DAY_START_MIN)/60*TIMELINE_PPH)+'px';
     sel.style.height=(state.durationHours*TIMELINE_PPH)+'px';
+    const selTime=sel.querySelector('.timeline-sel-time');
+    if(selTime) selTime.textContent=minutesToLabel(state.startMinutes);
   }
 
   async function fetchBusyIntervals(){
