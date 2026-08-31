@@ -1249,17 +1249,28 @@ body{
       const deltaY=e.clientY-dragStartY;
       const deltaMin=Math.round(deltaY/TIMELINE_PPH*60/15)*15;
       const durMin=state.durationHours*60;
-      // Длительность при перетаскивании не меняется — если конец упирается
-      // в начало/конец суток или в чужую бронь, блок просто останавливается там.
-      let candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, dragStartMinutes+deltaMin));
-      const direction = deltaMin>0 ? 1 : (deltaMin<0 ? -1 : 0);
-      const overlap=state.busyIntervals.find(b=>candidate<b.end && candidate+durMin>b.start);
-      if(overlap){
-        candidate = direction>=0 ? overlap.start-durMin : overlap.end;
-        candidate=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, candidate));
+      // Позиция отсчитывается от точки, с которой начали тянуть (dragStartMinutes —
+      // заведомо свободный слот), а не накапливается по кадрам — иначе дрожание.
+      let target=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, dragStartMinutes+deltaMin));
+      // Длительность при перетаскивании не меняется. Если между стартовой
+      // позицией и целью есть чужая бронь, блок останавливается вплотную к
+      // ближайшей из них и дальше не идёт — не перепрыгивает и не сжимается.
+      if(target>dragStartMinutes){
+        for(const b of state.busyIntervals){
+          if(dragStartMinutes+durMin<=b.start && target+durMin>b.start){
+            target=Math.min(target, b.start-durMin);
+          }
+        }
+      } else if(target<dragStartMinutes){
+        for(const b of state.busyIntervals){
+          if(dragStartMinutes>=b.end && target<b.end){
+            target=Math.max(target, b.end);
+          }
+        }
       }
-      if(candidate!==state.startMinutes){
-        state.startMinutes=candidate;
+      target=Math.max(DAY_START_MIN, Math.min(DAY_END_MIN-durMin, target));
+      if(target!==state.startMinutes){
+        state.startMinutes=target;
         renderTimelineSelection();
         renderSummary();
       }
