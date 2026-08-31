@@ -470,6 +470,41 @@ body{
 #hoursEditor .price-row-label{width:32px;flex:0 0 auto;}
 #hoursEditor .price-input-wrap input{width:52px;}
 
+.owners-list{display:flex;flex-direction:column;gap:8px;}
+.owner-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px 12px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:13px;
+  color:var(--text);
+}
+.owner-row .owner-you{
+  color:var(--amber);
+  font-family:'Work Sans',sans-serif;
+  font-size:11px;
+  margin-left:6px;
+}
+.owners-add{display:flex;gap:8px;margin-top:10px;}
+.owners-add input{
+  flex:1;
+  min-width:0;
+  background:var(--bg);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+  color:var(--text);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:14px;
+}
+.owners-add input:focus{outline:none;border-color:var(--amber);}
+.owners-hint{font-size:11px;color:var(--muted);margin-top:6px;}
+
 .admin-booking-owner{
   font-family:'Work Sans',sans-serif;
   font-size:12px;
@@ -1065,6 +1100,18 @@ body{
       <div class="price-editor" id="hoursEditor"></div>
       <button class="btn-primary" id="saveHoursBtn" style="margin-top:12px">Сохранить часы</button>
       <div class="save-note" id="hoursSaveNote"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Владельцы</div>
+      <div class="owners-list" id="ownersEditor"></div>
+      <div class="owners-add">
+        <input type="text" inputmode="numeric" id="newOwnerId" placeholder="Telegram ID" aria-label="Telegram ID нового владельца">
+        <button class="hours-apply-all" id="addOwnerBtn" type="button">Добавить</button>
+      </div>
+      <div class="owners-hint">ID нового владельца: пусть отправит любое сообщение боту @userinfobot</div>
+      <button class="btn-primary" id="saveOwnersBtn" style="margin-top:12px">Сохранить владельцев</button>
+      <div class="save-note" id="ownersSaveNote"></div>
     </div>
 
     <div class="section">
@@ -1881,6 +1928,11 @@ body{
     document.getElementById('weekAllEnd').value = hoursDraft[1].end;
     renderHoursEditor();
 
+    ownerMe = overview.me || null;
+    ownersDraft = (overview.owners || []).slice();
+    document.getElementById('newOwnerId').value='';
+    renderOwnersEditor();
+
     list.innerHTML='';
     if(all.length===0){
       list.innerHTML='<div class="bookings-empty">История броней пуста.</div>';
@@ -2054,6 +2106,63 @@ body{
       haptic('medium');
       note.style.color='var(--amber)';
       note.textContent='Часы работы обновлены';
+    } catch(e){
+      note.style.color='var(--red)';
+      note.textContent=e.message;
+    }
+    setTimeout(()=>{ note.textContent=''; }, 2500);
+  });
+
+  // ---- Владельцы ----
+  // ownersDraft — массив строк-ID; ownerMe — ID текущего пользователя (себя убрать нельзя).
+  let ownersDraft = [];
+  let ownerMe = null;
+
+  function renderOwnersEditor(){
+    const container=document.getElementById('ownersEditor');
+    container.innerHTML='';
+    ownersDraft.forEach((id, i)=>{
+      const row=document.createElement('div');
+      row.className='owner-row';
+      const isMe = id===ownerMe;
+      row.innerHTML =
+        `<span>${id}${isMe ? '<span class="owner-you">вы</span>' : ''}</span>` +
+        (isMe ? '' : `<button class="tier-delete-btn" type="button" data-idx="${i}" aria-label="Убрать владельца">✕</button>`);
+      container.appendChild(row);
+    });
+    container.querySelectorAll('.tier-delete-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        ownersDraft.splice(Number(btn.dataset.idx), 1);
+        renderOwnersEditor();
+        haptic('light');
+      });
+    });
+  }
+
+  document.getElementById('addOwnerBtn').addEventListener('click', ()=>{
+    const inp=document.getElementById('newOwnerId');
+    const note=document.getElementById('ownersSaveNote');
+    const id=inp.value.trim();
+    if(!/^\d{3,}$/.test(id)){ note.style.color='var(--red)'; note.textContent='ID — это число (узнать: @userinfobot)'; return; }
+    if(ownersDraft.includes(id)){ note.style.color='var(--red)'; note.textContent='Этот ID уже в списке'; return; }
+    ownersDraft.push(id);
+    inp.value='';
+    note.textContent='';
+    renderOwnersEditor();
+    haptic('light');
+  });
+
+  document.getElementById('saveOwnersBtn').addEventListener('click', async ()=>{
+    const note=document.getElementById('ownersSaveNote');
+    if(ownersDraft.length===0){ note.style.color='var(--red)'; note.textContent='Нужен хотя бы один владелец'; return; }
+    if(ownerMe && !ownersDraft.includes(ownerMe)){ note.style.color='var(--red)'; note.textContent='Нельзя убрать себя из владельцев'; return; }
+    try{
+      const updated = await api('PUT', '/admin/owners', ownersDraft);
+      ownersDraft = (updated.owners || []).slice();
+      renderOwnersEditor();
+      haptic('medium');
+      note.style.color='var(--amber)';
+      note.textContent='Список владельцев обновлён';
     } catch(e){
       note.style.color='var(--red)';
       note.textContent=e.message;
